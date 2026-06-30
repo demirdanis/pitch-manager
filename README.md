@@ -16,6 +16,8 @@ Next.js tabanlı, yapay zeka destekli haftalık halı saha maç yönetim platfor
 - [Ekran Akışı](#ekran-akışı)
 - [Kurulum](#kurulum)
 
+
+
 ---
 
 ## 🛠 Teknoloji Seçimleri
