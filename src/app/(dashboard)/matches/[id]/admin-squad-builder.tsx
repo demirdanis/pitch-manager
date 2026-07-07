@@ -41,8 +41,8 @@ export function AdminSquadBuilder({ matchId, playerCount, attendances }: AdminSq
   }
 
   async function handleGenerate() {
-    if (selected.length < 2 || selected.length % 2 !== 0) {
-      setError('Çift sayıda oyuncu seçin.');
+    if (selected.length !== playerCount) {
+      setError(`AI kadro oluşturmak için tam ${playerCount} oyuncu seçmelisin.`);
       return;
     }
     setError('');
@@ -169,7 +169,13 @@ export function AdminSquadBuilder({ matchId, playerCount, attendances }: AdminSq
 
       <div className="flex gap-2">
         <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>İptal</Button>
-        <Button variant="gold" loading={loading} onClick={handleGenerate} className="flex-1">
+        <Button
+          variant="gold"
+          loading={loading}
+          onClick={handleGenerate}
+          className="flex-1"
+          disabled={selected.length !== playerCount}
+        >
           {loading ? 'AI Oluşturuyor...' : '🤖 Kadroyu Oluştur'}
         </Button>
       </div>

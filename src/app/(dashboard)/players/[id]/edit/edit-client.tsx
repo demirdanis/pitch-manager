@@ -1,76 +1,98 @@
 'use client';
 
-import Image from 'next/image';
 import { useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import type { Player, PositionCode } from '@/types';
+import { ALL_POSITIONS, POSITION_LABELS } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { ALL_POSITIONS, POSITION_LABELS } from '@/utils';
-import type { PositionCode } from '@/types';
-import { GK_STATS, FIELD_STAT_GROUPS, clampRating, defaultFieldStats, defaultGkStats } from '@/lib/player-form';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { GK_STATS, FIELD_STAT_GROUPS, clampRating, defaultFieldStats, defaultGkStats, mapPositionRatings } from '@/lib/player-form';
 
-export default function NewPlayerPage() {
+interface EditPlayerClientProps {
+  player: Player;
+}
+
+export default function EditPlayerClient({ player }: EditPlayerClientProps) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [displayName, setDisplayName] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [hasField, setHasField] = useState(true);
-  const [hasGk, setHasGk] = useState(false);
-  const [fieldStats, setFieldStats] = useState<Record<string, number>>(defaultFieldStats());
-  const [gkStats, setGkStats] = useState<Record<string, number>>(defaultGkStats());
-  const [positionRatings, setPositionRatings] = useState<Partial<Record<PositionCode, number>>>({ CM: 75 });
-  const [loading, setLoading] = useState(false);
+  const [displayName, setDisplayName] = useState(player.display_name);
+  const [photoUrl, setPhotoUrl] = useState(player.user?.photo_url ?? null);
+  const [uploading, setUploading] = useState(false);
+  const [hasField, setHasField] = useState(Boolean(player.field_attributes));
+  const [hasGk, setHasGk] = useState(Boolean(player.gk_attributes));
+  const [fieldStats, setFieldStats] = useState<Record<string, number>>({
+    ...defaultFieldStats(),
+    ...(player.field_attributes ?? {}),
+  });
+  const [gkStats, setGkStats] = useState<Record<string, number>>({
+    ...defaultGkStats(),
+    ...(player.gk_attributes ?? {}),
+  });
+  const [positionRatings, setPositionRatings] = useState<Partial<Record<PositionCode, number>>>(
+    mapPositionRatings(player.position_ratings)
+  );
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
 
   const initial = useMemo(() => displayName.charAt(0).toUpperCase(), [displayName]);
 
   function setField(key: string, val: number) {
-    setFieldStats((p) => ({ ...p, [key]: clampRating(val) }));
+    setFieldStats((prev) => ({ ...prev, [key]: clampRating(val) }));
   }
+
   function setGk(key: string, val: number) {
-    setGkStats((p) => ({ ...p, [key]: clampRating(val) }));
+    setGkStats((prev) => ({ ...prev, [key]: clampRating(val) }));
   }
+
   function setPosRating(pos: PositionCode, val: number | undefined) {
-    setPositionRatings((p) => {
-      const next = { ...p };
+    setPositionRatings((prev) => {
+      const next = { ...prev };
       if (val === undefined) delete next[pos];
       else next[pos] = clampRating(val);
       return next;
     });
   }
 
-  async function uploadPhoto(playerId: string, file: File) {
-    const formData = new FormData();
-    formData.set('photo', file);
+  async function uploadPhoto(file: File) {
+    setUploading(true);
+    setError('');
+    setMessage('');
 
-    const res = await fetch(`/api/players/${playerId}/photo`, {
+    const form = new FormData();
+    form.set('photo', file);
+
+    const res = await fetch(`/api/players/${player.id}/photo`, {
       method: 'POST',
-      body: formData,
+      body: form,
     });
 
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.error ?? 'Fotoğraf yüklenemedi.');
+      setError(data.error ?? 'Fotoğraf yüklenemedi.');
+      setUploading(false);
+      return;
     }
+
+    setPhotoUrl(data.photoUrl);
+    setUploading(false);
+    setMessage('Fotoğraf güncellendi.');
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setSaving(true);
     setError('');
-    setLoading(true);
+    setMessage('');
 
-    const res = await fetch('/api/players', {
-      method: 'POST',
+    const res = await fetch(`/api/players/${player.id}`, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         displayName,
-        username,
-        password,
         hasField,
         hasGk,
         fieldStats: hasField ? fieldStats : null,
@@ -81,52 +103,28 @@ export default function NewPlayerPage() {
 
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error ?? 'Bir hata oluştu.');
-      setLoading(false);
+      setError(data.error ?? 'Güncelleme sırasında hata oluştu.');
+      setSaving(false);
       return;
     }
 
-    if (photoFile && data.playerId) {
-      try {
-        await uploadPhoto(data.playerId, photoFile);
-      } catch (photoError) {
-        setError(photoError instanceof Error ? photoError.message : 'Fotoğraf yüklenemedi.');
-        setLoading(false);
-        return;
-      }
-    }
-
-    router.push(`/players/${data.playerId}`);
+    router.push(`/players/${player.id}`);
+    router.refresh();
   }
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-black text-white mb-6">Yeni Oyuncu Ekle</h1>
+    <div>
+      <h1 className="text-2xl font-black text-white mb-6">Oyuncu Düzenle</h1>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-        {/* Account info */}
         <Card>
-          <CardHeader><span className="font-bold text-white">Hesap Bilgileri</span></CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <Input label="Görünen Ad" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required placeholder="Ahmet Yılmaz" />
-            <Input label="Kullanıcı Adı" value={username} onChange={(e) => setUsername(e.target.value)} required placeholder="ahmetyilmaz" />
-            <Input label="Geçici Şifre" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="En az 6 karakter" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <span className="font-bold text-white">Oyuncu Fotoğrafı</span>
-            <p className="text-xs text-slate-500 mt-0.5">Oyuncu oluşturulduktan sonra otomatik yüklenecek</p>
-          </CardHeader>
+          <CardHeader><span className="font-bold text-white">Fotoğraf</span></CardHeader>
           <CardContent className="flex items-center gap-4">
             <div className="relative w-20 h-20 rounded-full bg-slate-800 overflow-hidden ring-2 ring-slate-700">
-              {photoPreview ? (
-                <Image src={photoPreview} alt="Önizleme" fill className="object-cover" unoptimized />
+              {photoUrl ? (
+                <Image src={photoUrl} alt={displayName} fill className="object-cover" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-3xl font-black text-slate-500">
-                  {initial || 'O'}
-                </div>
+                <div className="w-full h-full flex items-center justify-center text-3xl font-black text-slate-500">{initial || 'O'}</div>
               )}
             </div>
             <div className="flex-1">
@@ -136,19 +134,25 @@ export default function NewPlayerPage() {
                 accept="image/*"
                 className="hidden"
                 onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  setPhotoFile(file);
-                  setPhotoPreview(file ? URL.createObjectURL(file) : null);
+                  const f = e.target.files?.[0];
+                  if (f) uploadPhoto(f);
                 }}
               />
-              <Button type="button" size="sm" variant="secondary" onClick={() => fileRef.current?.click()}>
-                Fotoğraf Seç
+              <Button type="button" size="sm" variant="secondary" loading={uploading} onClick={() => fileRef.current?.click()}>
+                {uploading ? 'Yükleniyor...' : 'Fotoğraf Değiştir'}
               </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Position ratings */}
+        <Card>
+          <CardHeader><span className="font-bold text-white">Oyuncu Bilgisi</span></CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Input label="Görünen Ad" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+            <Input label="Kullanıcı Adı" value={player.user?.username ?? ''} readOnly />
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <span className="font-bold text-white">Pozisyon Puanları</span>
@@ -163,7 +167,8 @@ export default function NewPlayerPage() {
                   </label>
                   <input
                     type="number"
-                    min={1} max={99}
+                    min={1}
+                    max={99}
                     value={positionRatings[pos] ?? ''}
                     placeholder="—"
                     onChange={(e) => {
@@ -178,19 +183,23 @@ export default function NewPlayerPage() {
           </CardContent>
         </Card>
 
-        {/* Type toggles */}
         <div className="flex gap-3">
-          <button type="button" onClick={() => setHasField(!hasField)}
-            className={`flex-1 py-3 rounded-xl border text-sm font-bold transition-all ${hasField ? 'bg-green-500/15 border-green-500/40 text-green-400' : 'bg-transparent border-slate-700 text-slate-500'}`}>
+          <button
+            type="button"
+            onClick={() => setHasField(!hasField)}
+            className={`flex-1 py-3 rounded-xl border text-sm font-bold transition-all ${hasField ? 'bg-green-500/15 border-green-500/40 text-green-400' : 'bg-transparent border-slate-700 text-slate-500'}`}
+          >
             ⚽ Saha Oyuncusu
           </button>
-          <button type="button" onClick={() => setHasGk(!hasGk)}
-            className={`flex-1 py-3 rounded-xl border text-sm font-bold transition-all ${hasGk ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-400' : 'bg-transparent border-slate-700 text-slate-500'}`}>
+          <button
+            type="button"
+            onClick={() => setHasGk(!hasGk)}
+            className={`flex-1 py-3 rounded-xl border text-sm font-bold transition-all ${hasGk ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-400' : 'bg-transparent border-slate-700 text-slate-500'}`}
+          >
             🧤 Kaleci
           </button>
         </div>
 
-        {/* Field stats */}
         {hasField && FIELD_STAT_GROUPS.map((group) => (
           <Card key={group.title}>
             <CardHeader><span className="font-bold text-white">{group.title}</span></CardHeader>
@@ -201,13 +210,17 @@ export default function NewPlayerPage() {
                     <label className="text-xs text-slate-400">{s.label}</label>
                     <div className="flex items-center gap-2">
                       <input
-                        type="range" min={1} max={99}
+                        type="range"
+                        min={1}
+                        max={99}
                         value={fieldStats[s.key]}
                         onChange={(e) => setField(s.key, Number(e.target.value))}
                         className="flex-1 accent-green-500 w-full"
                       />
                       <input
-                        type="number" min={1} max={99}
+                        type="number"
+                        min={1}
+                        max={99}
                         value={fieldStats[s.key]}
                         onChange={(e) => setField(s.key, Number(e.target.value))}
                         className="w-12 bg-[#0a0e1a] border border-slate-700 rounded px-1.5 py-1 text-xs text-center text-slate-100 focus:outline-none focus:ring-1 focus:ring-green-500"
@@ -220,7 +233,6 @@ export default function NewPlayerPage() {
           </Card>
         ))}
 
-        {/* GK stats */}
         {hasGk && (
           <Card>
             <CardHeader><span className="font-bold text-yellow-400">🧤 Kaleci Özellikleri</span></CardHeader>
@@ -230,12 +242,18 @@ export default function NewPlayerPage() {
                   <div key={s.key} className="flex flex-col gap-1">
                     <label className="text-xs text-slate-400">{s.label}</label>
                     <div className="flex items-center gap-2">
-                      <input type="range" min={1} max={99}
+                      <input
+                        type="range"
+                        min={1}
+                        max={99}
                         value={gkStats[s.key]}
                         onChange={(e) => setGk(s.key, Number(e.target.value))}
                         className="flex-1 accent-yellow-500"
                       />
-                      <input type="number" min={1} max={99}
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
                         value={gkStats[s.key]}
                         onChange={(e) => setGk(s.key, Number(e.target.value))}
                         className="w-12 bg-[#0a0e1a] border border-slate-700 rounded px-1.5 py-1 text-xs text-center text-slate-100 focus:outline-none focus:ring-1 focus:ring-yellow-500"
@@ -248,9 +266,10 @@ export default function NewPlayerPage() {
           </Card>
         )}
 
+        {message && <p className="text-sm text-green-400 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">{message}</p>}
         {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">{error}</p>}
 
-        <Button type="submit" loading={loading} size="lg">Oyuncu Oluştur</Button>
+        <Button type="submit" loading={saving} size="lg">Kaydet</Button>
       </form>
     </div>
   );

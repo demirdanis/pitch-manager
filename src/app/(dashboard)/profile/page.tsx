@@ -17,6 +17,7 @@ export default function ProfilePage() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -46,24 +47,52 @@ export default function ProfilePage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const ext = file.name.split('.').pop();
-    const path = `avatars/${user.id}.${ext}`;
-    const { error: uploadErr } = await supabase.storage
-      .from('avatars')
-      .upload(path, file, { upsert: true });
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `avatars/${user.id}.${ext}`;
+      
+      console.log('📤 Uploading to:', path);
 
-    if (uploadErr) {
-      setError(uploadErr.message);
+      const { error: uploadErr, data: uploadData } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true });
+
+      if (uploadErr) {
+        console.error('❌ Upload error:', uploadErr);
+        setError(`Upload hatası: ${uploadErr.message}`);
+        setUploading(false);
+        return;
+      }
+
+      console.log('✅ Upload successful:', uploadData);
+
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+      const url = data.publicUrl;
+      console.log('🔗 Public URL:', url);
+
+      const { error: updateErr, data: updateData } = await supabase
+        .from('users')
+        .update({ photo_url: url })
+        .eq('id', user.id)
+        .select();
+
+      if (updateErr) {
+        console.error('❌ DB update error:', updateErr);
+        setError(`Veritabanı hatası: ${updateErr.message}`);
+        setUploading(false);
+        return;
+      }
+
+      console.log('✅ DB updated:', updateData);
+
+      setPhotoUrl(url);
       setUploading(false);
-      return;
+      setMessage('Fotoğraf güncellendi.');
+    } catch (err) {
+      console.error('❌ Unexpected error:', err);
+      setError(`Beklenmedik hata: ${err instanceof Error ? err.message : String(err)}`);
+      setUploading(false);
     }
-
-    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-    const url = data.publicUrl;
-    await supabase.from('users').update({ photo_url: url }).eq('id', user.id);
-    setPhotoUrl(url);
-    setUploading(false);
-    setMessage('Fotoğraf güncellendi.');
   }
 
   async function saveProfile() {
@@ -75,6 +104,21 @@ export default function ProfilePage() {
     await supabase.from('players').update({ display_name: displayName }).eq('user_id', user.id);
     setMessage('Profil güncellendi.');
     setSaving(false);
+  }
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    setError('');
+
+    const { error: signOutError } = await supabase.auth.signOut();
+    if (signOutError) {
+      setError(signOutError.message);
+      setLoggingOut(false);
+      return;
+    }
+
+    router.push('/login');
+    router.refresh();
   }
 
   return (
@@ -126,9 +170,17 @@ export default function ProfilePage() {
         {/* Change password shortcut */}
         <Card>
           <CardHeader><span className="font-bold text-white">Güvenlik</span></CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-3">
             <Button variant="secondary" className="w-full" onClick={() => router.push('/change-password')}>
               Şifre Değiştir
+            </Button>
+            <Button
+              className="w-full"
+              variant="danger"
+              onClick={handleLogout}
+              loading={loggingOut}
+            >
+              {loggingOut ? 'Çıkış yapılıyor...' : 'Çıkış Yap'}
             </Button>
           </CardContent>
         </Card>

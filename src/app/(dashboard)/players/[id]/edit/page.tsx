@@ -2,13 +2,22 @@ export const dynamic = 'force-dynamic';
 
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
-import PlayerDetailClient from './client';
+import EditPlayerClient from './edit-client';
 
-export default async function PlayerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditPlayerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
   if (!user) redirect('/login');
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('is_admin')
+    .eq('id', user.id)
+    .single();
+
+  if (!profile?.is_admin) redirect('/players');
 
   const { data: player } = await supabase
     .from('players')
@@ -24,17 +33,9 @@ export default async function PlayerDetailPage({ params }: { params: Promise<{ i
 
   if (!player) notFound();
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('is_admin')
-    .eq('id', user.id)
-    .single();
-
-  const isAdmin = profile?.is_admin ?? false;
-
   return (
-    <div className="p-6 max-w-lg mx-auto">
-      <PlayerDetailClient player={player as never} isAdmin={isAdmin} />
+    <div className="p-6 max-w-2xl mx-auto">
+      <EditPlayerClient player={player as never} />
     </div>
   );
 }

@@ -4,8 +4,6 @@ import { generateSquad } from '@/lib/gemini/squad-generator';
 import type { Player } from '@/types';
 
 export async function POST(request: NextRequest) {
-
-  debugger;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -25,6 +23,25 @@ export async function POST(request: NextRequest) {
     .from('matches').select('player_count').eq('id', matchId).single();
   if (!match) return NextResponse.json({ error: 'Maç bulunamadı' }, { status: 404 });
 
+  const uniqueSelected = Array.from(new Set(selectedPlayerIds as string[]));
+  if (uniqueSelected.length !== match.player_count) {
+    return NextResponse.json(
+      { error: `AI kadro için tam ${match.player_count} oyuncu seçilmeli.` },
+      { status: 400 }
+    );
+  }
+
+  const { data: attendingRows } = await supabase
+    .from('match_attendance')
+    .select('player_id')
+    .eq('match_id', matchId)
+    .eq('attendance_status', 'attending')
+    .in('player_id', uniqueSelected);
+
+  if ((attendingRows?.length ?? 0) !== uniqueSelected.length) {
+    return NextResponse.json({ error: 'Sadece katılımcı listesindeki oyuncular seçilebilir.' }, { status: 400 });
+  }
+
   // Fetch players with all attributes
   const { data: players } = await supabase
     .from('players')
@@ -35,7 +52,7 @@ export async function POST(request: NextRequest) {
       gk_attributes:player_gk_attributes(*),
       position_ratings:player_position_ratings(*)
     `)
-    .in('id', selectedPlayerIds);
+    .in('id', uniqueSelected);
 
   if (!players?.length) return NextResponse.json({ error: 'Oyuncular bulunamadı' }, { status: 404 });
 

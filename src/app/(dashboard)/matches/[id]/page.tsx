@@ -10,6 +10,7 @@ import { formatMatchDate, deadlineCountdown, POSITION_LABELS } from '@/utils';
 import { AttendanceToggle } from './attendance-toggle';
 import { SquadView } from './squad-view';
 import { AdminSquadBuilder } from './admin-squad-builder';
+import { AdminAttendanceManager } from './admin-attendance-manager';
 import Image from 'next/image';
 
 export default async function MatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -84,6 +85,20 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
   const isPastDeadline = new Date(match.attendance_deadline) < new Date();
   const attending = attendances ?? [];
   const filled = attending.length >= match.player_count;
+  const attendingIds = new Set(attending.map((a) => a.player.id));
+
+  const { data: allPlayers } = await supabase
+    .from('players')
+    .select(`
+      id,
+      display_name,
+      user:users(photo_url),
+      position_ratings:player_position_ratings(*)
+    `)
+    .eq('is_active', true)
+    .order('display_name');
+
+  const nonAttendingPlayers = (allPlayers ?? []).filter((p) => !attendingIds.has(p.id));
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
@@ -131,6 +146,15 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
       )}
 
       {/* Attendance list */}
+      {isAdmin && (
+        <AdminAttendanceManager
+          matchId={id}
+          playerCount={match.player_count}
+          attending={attending.map((a) => a.player) as never}
+          notAttending={nonAttendingPlayers as never}
+        />
+      )}
+
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-bold text-white">
