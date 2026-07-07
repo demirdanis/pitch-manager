@@ -21,8 +21,8 @@ export default function LoginPage() {
     setLoading(true);
 
     const supabase = createClient();
-    // We store users with email as username@pitchmanager.local
-    const email = `${username.toLowerCase().trim()}@pitchmanager.local`;
+   
+    const email = `${username.toLowerCase().trim()}`;
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (authError) {

@@ -4,6 +4,9 @@ import { computeFieldRadar, computeGkRadar, computeOverall } from '@/utils';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
+// Yardımcı bekleme fonksiyonu (Retry için)
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 function buildPlayerContext(players: Player[]): string {
   return players
     .map((p) => {
@@ -27,65 +30,103 @@ function buildPlayerContext(players: Player[]): string {
     .join('\n');
 }
 
-// Preset field coordinates per position for a top-down 4-3-3 / 4-4-2 style layout
-const POSITION_COORDS: Record<PositionCode, { x: number; y: number }> = {
-  GK:  { x: 50, y: 90 },
-  CB:  { x: 50, y: 75 },
-  LB:  { x: 20, y: 75 },
-  RB:  { x: 80, y: 75 },
-  CDM: { x: 50, y: 60 },
-  LM:  { x: 20, y: 50 },
-  CM:  { x: 50, y: 50 },
-  RM:  { x: 80, y: 50 },
-  LW:  { x: 20, y: 30 },
-  RW:  { x: 80, y: 30 },
-  CAM: { x: 50, y: 35 },
-  CF:  { x: 50, y: 25 },
-  ST:  { x: 50, y: 15 },
+// Oyuncu sayısına göre ön tanımlı takım şablonları (Y ekseni 0-50 arası baz alınarak - Takım 1)
+const FORMATIONS: Record<number, { position: PositionCode; x: number; y: number }[]> = {
+  5: [ // 5v5 -> Elmas (1-2-1)
+    { position: 'GK', x: 50, y: 5 },
+    { position: 'CB', x: 50, y: 15 },
+    { position: 'LM', x: 20, y: 30 },
+    { position: 'RM', x: 80, y: 30 },
+    { position: 'ST', x: 50, y: 45 },
+  ],
+  6: [ // 6v6 -> Defansif (3-1-1)
+    { position: 'GK', x: 50, y: 5 },
+    { position: 'LB', x: 15, y: 20 },
+    { position: 'CB', x: 50, y: 15 },
+    { position: 'RB', x: 85, y: 20 },
+    { position: 'CM', x: 50, y: 35 },
+    { position: 'ST', x: 50, y: 45 },
+  ],
+  7: [ // 7v7 -> Standart Halı Saha (3-2-1)
+    { position: 'GK', x: 50, y: 5 },
+    { position: 'LB', x: 15, y: 20 },
+    { position: 'CB', x: 50, y: 15 },
+    { position: 'RB', x: 85, y: 20 },
+    { position: 'LM', x: 25, y: 35 },
+    { position: 'RM', x: 75, y: 35 },
+    { position: 'ST', x: 50, y: 45 },
+  ]
 };
 
-function mirrorForTeam2(player: AiTeamPlayer): AiTeamPlayer {
-  return { ...player, y: 100 - player.y };
+// Beklenmedik oyuncu sayıları için varsayılan basit bir dizilim üreteci (Eğer 5,6,7 dışında bir rakam gelirse çökmemesi için)
+function getFallbackFormation(count: number): { position: PositionCode; x: number; y: number }[] {
+  const formation: { position: PositionCode; x: number; y: number }[] = [{ position: 'GK', x: 50, y: 5 }];
+  for (let i = 1; i < count; i++) {
+    formation.push({ position: 'CM', x: 20 + (i * 10), y: 25 }); // Basit yanyana dizilim
+  }
+  return formation;
 }
 
 export async function generateSquad(
   players: Player[],
   playerCount: number
 ): Promise<AiSquadResult> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
 
   const halfCount = playerCount / 2;
   const playerContext = buildPlayerContext(players);
+  
+  // İlgili kişi sayısına göre formasyonumuzu alıyoruz
+  const activeFormation = FORMATIONS[halfCount] || getFallbackFormation(halfCount);
+  const requiredPositionsList = activeFormation.map(f => f.position).join(', ');
 
-  const prompt = `Sen bir futbol antrenörüsün. Aşağıda ${players.length} futbolcunun özellikleri JSON formatında verilmiştir.
-Bu oyunculardan 2 dengeli takım oluştur. Her takımda ${halfCount} oyuncu olacak.
+  const prompt = `Sen bir uzman futbol antrenörüsün. Aşağıda ${players.length} futbolcunun özellikleri JSON formatında verilmiştir.
+Bu oyunculardan güçleri birbirine MÜMKÜN OLDUĞUNCA eşit 2 adet dengeli takım oluştur.
 
-Kurallar:
-1. Her takımın toplam overall puanı birbirine MÜMKÜN OLDUĞUNCA yakın olmalı.
-2. En az 1 kaleci (GK) her takımda zorunlu. GK özelliği olan oyuncuyu kaleye koy.
-3. Her oyuncuyu en iyi pozisyonuna yerleştir (positions alanındaki en yüksek puanlı pozisyona göre).
-4. Saha formatı: ${halfCount}v${halfCount}
-5. Pozisyon seçerken şu formatı kullan: GK, LB, RB, CB, CDM, LM, CM, RM, LW, RW, CAM, CF, ST
+Takımlarımız ${halfCount}v${halfCount} şeklinde oynanacaktır. 
+
+ZORUNLU KURALLAR:
+1. Her iki takım için DE şu pozisyonları BİREBİR doldurmak ZORUNDASIN: [${requiredPositionsList}]
+2. Her takımda tam olarak 1 adet GK olmak zorunda.
+3. Her oyuncuyu yeteneklerine ("positions" alanındaki verilere veya puanlarına) en uygun olduğu rolde oynat.
+4. Toplam takım güçlerinin (overall) dengeli olmasına azami özen göster.
 
 Oyuncu verileri:
 ${playerContext}
 
-Yanıtı SADECE geçerli JSON olarak ver, başka hiçbir şey yazma:
+Yanıtı SADECE aşağıdaki geçerli JSON formatında ver, başka hiçbir şey (kod bloğu işareti vb) yazma. 
+"position" alanına mutlaka zorunlu tutulan pozisyon kodlarından birini yaz:
 {
   "team1": [
-    { "playerId": "...", "playerName": "...", "position": "ST" }
+    { "playerId": "...", "playerName": "...", "position": "GK" },
+    { "playerId": "...", "playerName": "...", "position": "CB" }
   ],
   "team2": [
-    { "playerId": "...", "playerName": "...", "position": "GK" }
+    { "playerId": "...", "playerName": "...", "position": "GK" },
+    { "playerId": "...", "playerName": "...", "position": "CB" }
   ],
   "balance_score": 94.5,
-  "notes": "Kısa açıklama"
+  "notes": "Kısa açıklama: Neden bu oyuncuları seçtiğin"
 }`;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text().trim();
+  let text = "";
+  const maxRetries = 3;
 
-  // Strip markdown code fences if present
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await model.generateContent(prompt);
+      text = result.response.text().trim();
+      break; 
+    } catch (error: any) {
+      if (error?.status === 429 && attempt < maxRetries - 1) {
+        console.warn(`[Gemini API] Rate limit aşıldı. 15s bekleniyor (Deneme: ${attempt + 1})`);
+        await delay(15000); 
+      } else {
+        throw error;
+      }
+    }
+  }
+
   const jsonText = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
   const raw = JSON.parse(jsonText) as {
     team1: { playerId: string; playerName: string; position: string }[];
@@ -94,23 +135,29 @@ Yanıtı SADECE geçerli JSON olarak ver, başka hiçbir şey yazma:
     notes: string;
   };
 
+  // Gemini'dan gelen pozisyona göre haritadan bizim sabit X,Y koordinatımızı çekiyoruz
+  // mirrorY true ise 2. takım için y eksenini 100 üzerinden ters çevirip rakip sahaya atıyoruz (50-100 arasına)
   const mapTeam = (items: typeof raw.team1, mirrorY: boolean): AiTeamPlayer[] =>
     items.map((item) => {
       const pos = item.position as PositionCode;
-      const coords = POSITION_COORDS[pos] ?? { x: 50, y: 50 };
-      const y = mirrorY ? 100 - coords.y : coords.y;
+      // Formasyondan bu pozisyonun X ve Y'sini bul. Yoksa sahaya rastgele atma, merkeze al
+      const formRole = activeFormation.find(f => f.position === pos);
+      const coords = formRole ? { x: formRole.x, y: formRole.y } : { x: 50, y: 25 }; 
+      
+      const finalY = mirrorY ? 100 - coords.y : coords.y;
+
       return {
         playerId: item.playerId,
         playerName: item.playerName,
         position: pos,
         x: coords.x,
-        y,
+        y: finalY,
       };
     });
 
   return {
-    team1: mapTeam(raw.team1, false),
-    team2: mapTeam(raw.team2, true),
+    team1: mapTeam(raw.team1, false), // Takım 1 Y: 0-50 arası kalır
+    team2: mapTeam(raw.team2, true),  // Takım 2 Y: 50-100 arasına yansıtılır
     balance_score: raw.balance_score,
     notes: raw.notes,
   };

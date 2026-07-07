@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Eksik alanlar' }, { status: 400 });
   }
 
-  const email = `${username.toLowerCase().trim()}@pitchmanager.local`;
+  const email = `${username.toLowerCase().trim()}`;
 
   // Create Supabase auth user
   const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({

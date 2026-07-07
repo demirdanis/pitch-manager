@@ -10,6 +10,7 @@ import { formatMatchDate, deadlineCountdown, POSITION_LABELS } from '@/utils';
 import { AttendanceToggle } from './attendance-toggle';
 import { SquadView } from './squad-view';
 import { AdminSquadBuilder } from './admin-squad-builder';
+import Image from 'next/image';
 
 export default async function MatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -161,7 +162,7 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
                 <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-sm font-bold text-slate-400 overflow-hidden shrink-0">
                   {p.user?.photo_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.user.photo_url} alt={p.display_name} className="w-full h-full object-cover" />
+                    <Image src={p.user.photo_url} alt={p.display_name} width={36} height={36} className="w-full h-full object-cover" />
                   ) : (
                     p.display_name.charAt(0)
                   )}

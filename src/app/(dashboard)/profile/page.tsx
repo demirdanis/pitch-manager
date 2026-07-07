@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
@@ -19,6 +19,26 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+  
+  async function fetchProfile() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('display_name, photo_url')
+      .eq('id', user.id)
+      .single();
+
+    if (data) {
+      setDisplayName(data.display_name || '');
+      setPhotoUrl(data.photo_url);
+    }
+  }
 
   async function uploadPhoto(file: File) {
     setUploading(true);

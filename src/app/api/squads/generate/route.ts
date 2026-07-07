@@ -4,6 +4,8 @@ import { generateSquad } from '@/lib/gemini/squad-generator';
 import type { Player } from '@/types';
 
 export async function POST(request: NextRequest) {
+
+  debugger;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -88,7 +90,12 @@ export async function POST(request: NextRequest) {
   ];
 
   const { error: spErr } = await adminSupabase.from('squad_players').insert(squadPlayers);
-  if (spErr) return NextResponse.json({ error: spErr.message }, { status: 500 });
+
+  console.log('Squad generated:', { squadId: squad.id, aiResult, squadPlayers });
+  if (spErr) {
+    console.error('Error inserting squad players:', spErr);
+    return NextResponse.json({ error: spErr.message }, { status: 500 }); 
+  }
 
   return NextResponse.json({ squadId: squad.id, aiResult }, { status: 201 });
 }
