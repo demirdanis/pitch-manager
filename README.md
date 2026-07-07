@@ -18,6 +18,8 @@ Next.js tabanlı, yapay zeka destekli haftalık halı saha maç yönetim platfor
 
 
 
+
+
 ---
 
 ## 🛠 Teknoloji Seçimleri
