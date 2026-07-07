@@ -1,10 +1,10 @@
 
 import Image from 'next/image';
 
-export function FootballField({ team1, team2 }: FootballFieldProps) {
+export function FootballField({ team1, team2 }: any) {
   const allPlayers = [
-    ...team1.squad_players.map((sp) => ({ sp, color: team1.jersey_color })),
-    ...team2.squad_players.map((sp) => ({ sp, color: team2.jersey_color })),
+    ...team1.squad_players.map((sp: any) => ({ sp, color: team1.jersey_color })),
+    ...team2.squad_players.map((sp: any) => ({ sp, color: team2.jersey_color })),
   ];
 
   return (
