@@ -15,6 +15,17 @@ export async function POST(
   if (!profile?.is_admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const adminSupabase = await createAdminClient();
+  const { data: squad } = await adminSupabase.from('squads').select('match_id').eq('id', id).single();
+  if (!squad) return NextResponse.json({ error: 'Kadro bulunamadi' }, { status: 404 });
+
+  const { error: resetErr } = await adminSupabase
+    .from('squads')
+    .update({ status: 'draft', approved_by: null, approved_at: null })
+    .eq('match_id', squad.match_id)
+    .eq('status', 'approved');
+
+  if (resetErr) return NextResponse.json({ error: resetErr.message }, { status: 500 });
+
   const { error } = await adminSupabase
     .from('squads')
     .update({ status: 'approved', approved_by: user.id, approved_at: new Date().toISOString() })
@@ -22,11 +33,7 @@ export async function POST(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Update match status
-  const { data: squad } = await adminSupabase.from('squads').select('match_id').eq('id', id).single();
-  if (squad) {
-    await adminSupabase.from('matches').update({ status: 'squad_ready' }).eq('id', squad.match_id);
-  }
+  await adminSupabase.from('matches').update({ status: 'squad_ready' }).eq('id', squad.match_id);
 
   return NextResponse.json({ ok: true });
 }

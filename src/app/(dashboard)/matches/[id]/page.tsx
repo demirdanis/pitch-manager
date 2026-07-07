@@ -213,17 +213,18 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
       </div>
 
       {/* Admin squad builder */}
-      {isAdmin && !squad && attending.length > 0 && (
+      {isAdmin && attending.length > 0 && (
         <AdminSquadBuilder
           matchId={id}
           playerCount={match.player_count}
           attendances={attending as never}
+          hasExistingSquad={Boolean(squad)}
         />
       )}
 
       {/* Approved squad on field */}
       {squad && (
-        <SquadView squad={squad as never} />
+        <SquadView squad={squad as never} isAdmin={isAdmin} />
       )}
     </div>
   );

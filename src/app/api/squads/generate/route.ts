@@ -2,6 +2,37 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { generateSquad } from '@/lib/gemini/squad-generator';
 import type { Player } from '@/types';
+import type { PositionCode } from '@/types';
+import { getPositionCoordinates } from '@/lib/squad-layout';
+
+async function clearMatchSquads(adminSupabase: Awaited<ReturnType<typeof createAdminClient>>, matchId: string) {
+  const { data: existingSquads, error: existingErr } = await adminSupabase
+    .from('squads')
+    .select('id')
+    .eq('match_id', matchId);
+
+  if (existingErr) throw new Error(existingErr.message);
+  const squadIds = (existingSquads ?? []).map((s) => s.id);
+  if (squadIds.length === 0) return;
+
+  const { error: spErr } = await adminSupabase
+    .from('squad_players')
+    .delete()
+    .in('squad_id', squadIds);
+  if (spErr) throw new Error(spErr.message);
+
+  const { error: teamsErr } = await adminSupabase
+    .from('squad_teams')
+    .delete()
+    .in('squad_id', squadIds);
+  if (teamsErr) throw new Error(teamsErr.message);
+
+  const { error: squadsErr } = await adminSupabase
+    .from('squads')
+    .delete()
+    .eq('match_id', matchId);
+  if (squadsErr) throw new Error(squadsErr.message);
+}
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -59,8 +90,17 @@ export async function POST(request: NextRequest) {
   // Call Gemini
   const aiResult = await generateSquad(players as Player[], match.player_count);
 
-  // Persist squad
+  // Clear and persist squad from scratch
   const adminSupabase = await createAdminClient();
+  try {
+    await clearMatchSquads(adminSupabase, matchId);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Eski kadrolar temizlenemedi.' },
+      { status: 500 }
+    );
+  }
+
   const { data: squad, error: squadErr } = await adminSupabase
     .from('squads')
     .insert({
@@ -86,24 +126,38 @@ export async function POST(request: NextRequest) {
     .select().single();
   if (t2Err) return NextResponse.json({ error: t2Err.message }, { status: 500 });
 
-  // Squad players
+  const toSquadPlayers = (
+    team: { playerId: string; position: PositionCode }[],
+    teamNumber: 1 | 2,
+    teamId: string
+  ) => {
+    const positionTotals = new Map<PositionCode, number>();
+    team.forEach((p) => {
+      positionTotals.set(p.position, (positionTotals.get(p.position) ?? 0) + 1);
+    });
+
+    const seenByPosition = new Map<PositionCode, number>();
+
+    return team.map((p) => {
+      const index = seenByPosition.get(p.position) ?? 0;
+      seenByPosition.set(p.position, index + 1);
+      const total = positionTotals.get(p.position) ?? 1;
+      const coords = getPositionCoordinates(p.position, teamNumber, index, total);
+
+      return {
+        squad_id: squad.id,
+        team_id: teamId,
+        player_id: p.playerId,
+        position_on_field: p.position,
+        field_x: coords.x,
+        field_y: coords.y,
+      };
+    });
+  };
+
   const squadPlayers = [
-    ...aiResult.team1.map((p) => ({
-      squad_id: squad.id,
-      team_id: t1.id,
-      player_id: p.playerId,
-      position_on_field: p.position,
-      field_x: p.x,
-      field_y: p.y,
-    })),
-    ...aiResult.team2.map((p) => ({
-      squad_id: squad.id,
-      team_id: t2.id,
-      player_id: p.playerId,
-      position_on_field: p.position,
-      field_x: p.x,
-      field_y: p.y,
-    })),
+    ...toSquadPlayers(aiResult.team1, 1, t1.id),
+    ...toSquadPlayers(aiResult.team2, 2, t2.id),
   ];
 
   const { error: spErr } = await adminSupabase.from('squad_players').insert(squadPlayers);

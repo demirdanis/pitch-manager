@@ -1,10 +1,11 @@
 
 import Image from 'next/image';
+import { getDisplayCoordinates } from '@/lib/squad-layout';
 
 export function FootballField({ team1, team2 }: any) {
   const allPlayers = [
-    ...team1.squad_players.map((sp: any) => ({ sp, color: team1.jersey_color })),
-    ...team2.squad_players.map((sp: any) => ({ sp, color: team2.jersey_color })),
+    ...team1.squad_players.map((sp: any) => ({ sp, color: team1.jersey_color, teamNumber: 1 as const })),
+    ...team2.squad_players.map((sp: any) => ({ sp, color: team2.jersey_color, teamNumber: 2 as const })),
   ];
 
   return (
@@ -19,16 +20,17 @@ export function FootballField({ team1, team2 }: any) {
       </svg>
 
       {/* 2. Futbolcular (HTML Katmanı) */}
-      {allPlayers.map(({ sp }) => {
+      {allPlayers.map(({ sp, teamNumber }) => {
         const p = sp.player;
         if (!p) return null;
         const photoUrl = p.user?.photo_url;
-
+        const display = getDisplayCoordinates(sp.field_x, sp.field_y, teamNumber);
+console.log("p.user",p.user)
         return (
           <div
             key={sp.id}
             className="absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${sp.field_x}%`, top: `${sp.field_y}%` }}
+            style={{ left: `${display.x}%`, top: `${display.y}%` }}
           >
             {/* Fotoğraf Dairesi */}
             <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white bg-slate-700 shadow-lg">

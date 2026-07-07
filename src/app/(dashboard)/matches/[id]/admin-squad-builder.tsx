@@ -17,11 +17,12 @@ interface AdminSquadBuilderProps {
   matchId: string;
   playerCount: number;
   attendances: Attendance[];
+  hasExistingSquad?: boolean;
 }
 
 const COLORS = Object.keys(JERSEY_COLORS) as JerseyColor[];
 
-export function AdminSquadBuilder({ matchId, playerCount, attendances }: AdminSquadBuilderProps) {
+export function AdminSquadBuilder({ matchId, playerCount, attendances, hasExistingSquad = false }: AdminSquadBuilderProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>(
@@ -77,7 +78,7 @@ export function AdminSquadBuilder({ matchId, playerCount, attendances }: AdminSq
   if (!open) {
     return (
       <Button variant="gold" size="lg" className="w-full" onClick={() => setOpen(true)}>
-        🤖 AI ile Kadro Oluştur
+        {hasExistingSquad ? '🤖 AI ile Kadroyu Yeniden Olustur' : '🤖 AI ile Kadro Olustur'}
       </Button>
     );
   }

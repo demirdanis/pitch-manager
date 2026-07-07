@@ -2,9 +2,11 @@
 
 import { FootballField } from '@/components/football-field/football-field';
 import { Badge } from '@/components/ui/badge';
+import { AdminSquadEditor } from './admin-squad-editor';
 import type { Squad, SquadTeam, SquadPlayer, Player } from '@/types';
 
 interface SquadViewProps {
+  isAdmin: boolean;
   squad: Squad & {
     teams: (SquadTeam & {
       squad_players: (SquadPlayer & { player: Player })[];
@@ -12,7 +14,7 @@ interface SquadViewProps {
   };
 }
 
-export function SquadView({ squad }: SquadViewProps) {
+export function SquadView({ squad, isAdmin }: SquadViewProps) {
   const team1 = squad.teams.find((t) => t.team_number === 1);
   const team2 = squad.teams.find((t) => t.team_number === 2);
 
@@ -26,6 +28,14 @@ export function SquadView({ squad }: SquadViewProps) {
       </div>
 
       <FootballField team1={team1 as never} team2={team2 as never} />
+
+      {isAdmin && (
+        <AdminSquadEditor
+          squadId={squad.id}
+          team1={team1 as never}
+          team2={team2 as never}
+        />
+      )}
 
       {squad.ai_response_raw && (() => {
         try {
