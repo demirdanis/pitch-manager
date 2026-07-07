@@ -25,11 +25,11 @@ export default function EditPlayerClient({ player }: EditPlayerClientProps) {
   const [hasGk, setHasGk] = useState(Boolean(player.gk_attributes));
   const [fieldStats, setFieldStats] = useState<Record<string, number>>({
     ...defaultFieldStats(),
-    ...(player.field_attributes ?? {}),
+    ...(player.field_attributes ?? {} as any),
   });
   const [gkStats, setGkStats] = useState<Record<string, number>>({
     ...defaultGkStats(),
-    ...(player.gk_attributes ?? {}),
+    ...(player.gk_attributes ?? {} as any),
   });
   const [positionRatings, setPositionRatings] = useState<Partial<Record<PositionCode, number>>>(
     mapPositionRatings(player.position_ratings)

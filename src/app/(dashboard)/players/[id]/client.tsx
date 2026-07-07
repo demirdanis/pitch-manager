@@ -29,7 +29,7 @@ export default function PlayerDetailClient({ player: initialPlayer, isAdmin }: P
       .single();
 
     if (user) {
-      setPlayer((prev) => ({
+      setPlayer((prev:any) => ({
         ...prev,
         user: {
           ...prev.user,
@@ -63,7 +63,7 @@ export default function PlayerDetailClient({ player: initialPlayer, isAdmin }: P
       return;
     }
 
-    setPlayer((prev) => ({
+    setPlayer((prev:any) => ({
       ...prev,
       user: {
         ...prev.user,
